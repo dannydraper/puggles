@@ -5,12 +5,14 @@ import { KeyboardEventTypes } from "@babylonjs/core/Events/keyboardEvents";
 import { PhysicsCharacterController, CharacterSupportedState } from "@babylonjs/core/Physics/v2/characterController";
 import { PugParts } from "./pug";
 import { groundHeight } from "./environment";
+import { createBarkSystem } from "./bark";
 
 // Movement (units per second)
 const WALK_SPEED  = 4.5;
 const TURN_SPEED  = 1.9;   // rad/s
 const RUN_MULT    = 2.2;
 const GRAVITY     = 9.81;
+const JUMP_VEL    = 5.5;   // initial upward velocity on jump (~1.5 u peak height)
 
 // Camera spring
 const CAM_SPRING  = 8;
@@ -43,16 +45,23 @@ export function createPlayer(scene: Scene, pug: PugParts): UniversalCamera {
     scene,
   );
 
+  const triggerBark = createBarkSystem(scene, pug);
+
   const keys = new Set<string>();
   scene.onKeyboardObservable.add((info) => {
     const k = info.event.key.toLowerCase();
-    if (info.type === KeyboardEventTypes.KEYDOWN) keys.add(k);
-    else keys.delete(k);
+    if (info.type === KeyboardEventTypes.KEYDOWN) {
+      keys.add(k);
+      if (k === "b") triggerBark();
+    } else {
+      keys.delete(k);
+    }
   });
 
-  let velocity  = 0;
+  let velocity   = 0;
   let gravityVel = 0;
-  let walkClock = 0;
+  let canJump    = false;
+  let walkClock  = 0;
   let wagClock  = 0;
   let idleClock = 0;
 
@@ -92,8 +101,15 @@ export function createPlayer(scene: Scene, pug: PugParts): UniversalCamera {
     const support = cc.checkSupport(dt, downDir);
     if (support.supportedState >= CharacterSupportedState.SLIDING) {
       gravityVel = 0;
+      canJump    = true;
     } else {
       gravityVel -= GRAVITY * dt;
+      canJump    = false;
+    }
+
+    if (keys.has(" ") && canJump) {
+      gravityVel = JUMP_VEL;
+      canJump    = false;
     }
 
     const ry   = pug.root.rotation.y;

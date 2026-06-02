@@ -102,7 +102,7 @@ export function createHUD(
 
   // ── Controls hint ──────────────────────────────────────────────
   const hint = document.createElement("div");
-  hint.textContent = "WASD · turn + move      SHIFT · run";
+  hint.textContent = "WASD · move      SHIFT · run      SPACE · jump      B · bark";
   Object.assign(hint.style, {
     position:      "absolute",
     bottom:        "14px",

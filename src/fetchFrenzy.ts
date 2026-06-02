@@ -202,10 +202,11 @@ function spawnRing(scene: Scene, owner: OwnerNPC, colorIdx: number): FetchRing {
 
 // ── Score HUD ──────────────────────────────────────────────────────────────────
 function createGameHUD(): {
-  updateScore: (s: number, c: number, h: number) => void;
-  showStatus:  (msg: string, color?: string) => void;
-  showTimer:   (t: number, max: number) => void;
-  hideTimer:   () => void;
+  updateScore:    (s: number, c: number, h: number) => void;
+  showStatus:     (msg: string, color?: string) => void;
+  startTimer:     (duration: number) => void;
+  setTimerColor:  (frac: number) => void;
+  hideTimer:      () => void;
 } {
   const wrap = document.createElement("div");
   Object.assign(wrap.style, {
@@ -248,6 +249,14 @@ function createGameHUD(): {
     display:      "none",
   });
 
+  // Inject CSS keyframes once — the animation runs entirely on the GPU,
+  // no JS writes to the DOM during the render loop.
+  const kfStyle = document.createElement("style");
+  kfStyle.textContent = `
+    @keyframes fz-drain { from { transform:scaleX(1); } to { transform:scaleX(0); } }
+  `;
+  document.head.appendChild(kfStyle);
+
   const timerBar = document.createElement("div");
   Object.assign(timerBar.style, {
     marginTop:    "8px",
@@ -258,16 +267,17 @@ function createGameHUD(): {
     overflow:     "hidden",
   });
   const timerFill = document.createElement("div");
-  // Use transform:scaleX instead of width — avoids layout recalc every frame
   Object.assign(timerFill.style, {
     height:          "100%",
     width:           "100%",
     borderRadius:    "3px",
     transformOrigin: "left center",
-    transform:       "scaleX(1)",
     background:      "#44dd66",
   });
   timerBar.appendChild(timerFill);
+
+  // Track the last color phase so we only write background on threshold crossings
+  let timerColorPhase = 0;
 
   wrap.appendChild(card);
   wrap.appendChild(status);
@@ -290,16 +300,27 @@ function createGameHUD(): {
       clearTimeout(statusTimeout);
       statusTimeout = window.setTimeout(() => { status.style.opacity = "0"; }, 2000);
     },
-    showTimer(t, max) {
-      if (timerBar.style.display !== "block") timerBar.style.display = "block";
-      const frac   = Math.max(0, t / max);
-      // scaleX doesn't trigger layout — safe to call every frame
-      timerFill.style.transform = `scaleX(${frac})`;
-      // Only update background on threshold crossings (3 states, not every frame)
-      const bg = frac > 0.5 ? "#44dd66" : frac > 0.25 ? "#ffcc22" : "#ff4422";
-      if (timerFill.style.background !== bg) timerFill.style.background = bg;
+    startTimer(duration: number) {
+      timerColorPhase = 0;
+      timerFill.style.background = "#44dd66";
+      // Restart the CSS animation: clear it, force a reflow, then re-apply.
+      timerFill.style.animation = "none";
+      timerFill.offsetHeight;   // eslint-disable-line @typescript-eslint/no-unused-expressions
+      timerFill.style.animation = `fz-drain ${duration}s linear forwards`;
+      timerBar.style.display = "block";
+    },
+    // Called only at the two color-threshold crossings per ring — not per frame
+    setTimerColor(frac: number) {
+      if (frac <= 0.25 && timerColorPhase < 2) {
+        timerColorPhase = 2;
+        timerFill.style.background = "#ff4422";
+      } else if (frac <= 0.5 && timerColorPhase < 1) {
+        timerColorPhase = 1;
+        timerFill.style.background = "#ffcc22";
+      }
     },
     hideTimer() {
+      timerFill.style.animation = "none";
       if (timerBar.style.display !== "none") timerBar.style.display = "none";
     },
   };
@@ -461,11 +482,11 @@ export function startFetchFrenzy(scene: Scene, pugRoot: TransformNode): void {
           // Spin like a frisbee while in flight
           r.mesh.rotation.y += dt * 6;
           if (r.arcT >= 1) {
-            r.state      = 'ground';
-            r.landTime   = Date.now();
+            r.state        = 'ground';
+            r.landTime     = Date.now();
             r.despawnTimer = despawnTime();
-            // Lie flat on landing
             r.mesh.rotation.x = 0;
+            hud.startTimer(r.maxDespawn);   // CSS animation — no JS per frame
             hud.showStatus("FETCH!", "#ffdd44");
           }
           break;
@@ -486,7 +507,8 @@ export function startFetchFrenzy(scene: Scene, pugRoot: TransformNode): void {
             const pulse = (Math.sin(now * 0.018 * (4 - r.despawnTimer)) + 1) * 0.5;
             r.mesh.scaling.setAll(0.8 + pulse * 0.4);
           }
-          hud.showTimer(Math.max(0, r.despawnTimer), r.maxDespawn);
+          // Only write to DOM at the two color crossings — not every frame
+          hud.setTimerColor(Math.max(0, r.despawnTimer) / r.maxDespawn);
 
           // Check catch
           const dx = r.mesh.position.x - pugRoot.position.x;

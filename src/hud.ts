@@ -145,25 +145,33 @@ export function createHUD(
   const mapCtx = mapCanvas.getContext("2d")!;
   const arcCtx = arcCanvas.getContext("2d")!;
 
+  // Stable references + cached values — avoids per-frame querySelector and innerHTML churn
+  const td = document.createElement("div");
+  td.className = "clock-text";
+  clock.insertBefore(td, arcCanvas);
+  let lastTimeStr   = "";
+  let lastPeriodStr = "";
+  let lastClockBg   = "";
+
   scene.onAfterRenderObservable.add(() => {
     const tod = getTimeOfDay();
 
-    // ── Update clock ────────────────────────────────────────────
+    // ── Update clock (only when values actually change) ─────────
     const timeStr   = formatClock(tod);
     const periodStr = periodLabel(tod);
-    clock.style.background = clockTint(tod);
-    // Rebuild inner HTML preserving the arc canvas
-    const textDiv = clock.querySelector(".clock-text") as HTMLElement | null;
-    if (!textDiv) {
-      const d = document.createElement("div");
-      d.className = "clock-text";
-      clock.insertBefore(d, arcCanvas);
+    const clockBg   = clockTint(tod);
+    if (timeStr !== lastTimeStr || periodStr !== lastPeriodStr) {
+      lastTimeStr   = timeStr;
+      lastPeriodStr = periodStr;
+      td.innerHTML  = [
+        `<span style="font-size:20px;font-weight:800;letter-spacing:2px">${timeStr}</span>`,
+        `<span style="display:block;font-size:9px;letter-spacing:2.5px;opacity:0.65;margin-top:2px">${periodStr}</span>`,
+      ].join("");
     }
-    const td = clock.querySelector(".clock-text") as HTMLElement;
-    td.innerHTML = [
-      `<span style="font-size:20px;font-weight:800;letter-spacing:2px">${timeStr}</span>`,
-      `<span style="display:block;font-size:9px;letter-spacing:2.5px;opacity:0.65;margin-top:2px">${periodStr}</span>`,
-    ].join("");
+    if (clockBg !== lastClockBg) {
+      lastClockBg = clockBg;
+      clock.style.background = clockBg;
+    }
 
     // ── Arc progress bar ───────────────────────────────────────
     const W = arcCanvas.width, H = arcCanvas.height;

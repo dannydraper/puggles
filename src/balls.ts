@@ -11,7 +11,6 @@ import { groundHeight } from "./environment";
 const BALL_D      = 0.55;
 const BALL_R      = BALL_D / 2;
 // Minimum speed² before we apply a nudge — avoids micro-vibrations at rest
-const REST_SPD2   = 0.04;
 
 const SPAWN_XZ: [number, number][] = [
   [  5,  5 ], [ -5,  5 ], [  5, -5 ], [ -5, -5 ],
@@ -82,8 +81,9 @@ export function createBalls(
   // Manual nudge pass — applied on top of whatever Havok's character-strength
   // push gives us, so balls feel snappy even if the CC push is subtle.
   const NUDGE_DIST   = BALL_R + 0.45;   // contact radius (ball + character)
-  const NUDGE_FORCE  = 7.0;             // impulse magnitude
-  const upVec        = new Vector3(0, 0.18, 0); // tiny upward component = slight loft
+  const NUDGE_FORCE  = 7.0;
+  const upVec        = new Vector3(0, 0.18, 0);
+  const _impulse     = new Vector3();              // reused — avoids allocation per contact
 
   const characters: TransformNode[] = [pugRoot, ...dogRoots];
 
@@ -93,8 +93,8 @@ export function createBalls(
 
     for (const ball of balls) {
       const bp = ball.mesh.position;
-      const vel = ball.aggregate.body.getLinearVelocity();
-      const spd2 = vel.x * vel.x + vel.z * vel.z;
+      // getLinearVelocity() was here but its result was unused (charSpd was always 1.0)
+      // so the 8 WASM calls/frame have been removed
 
       for (const char of characters) {
         const cp = char.position;
@@ -104,16 +104,13 @@ export function createBalls(
 
         if (dist2 < NUDGE_DIST * NUDGE_DIST && dist2 > 0.0001) {
           const dist = Math.sqrt(dist2);
-          // Impulse proportional to how fast the character is moving
-          const charSpd = spd2 < REST_SPD2 ? 1.0 : 1.0; // always nudge on contact
-          const mag = NUDGE_FORCE * charSpd;
-          const impulse = new Vector3(
-            (dx / dist) * mag + upVec.x,
-            upVec.y * mag,
-            (dz / dist) * mag + upVec.z,
+          _impulse.set(
+            (dx / dist) * NUDGE_FORCE + upVec.x,
+            upVec.y * NUDGE_FORCE,
+            (dz / dist) * NUDGE_FORCE + upVec.z,
           );
-          ball.aggregate.body.applyImpulse(impulse, bp);
-          break; // one nudge per ball per frame is enough
+          ball.aggregate.body.applyImpulse(_impulse, bp);
+          break;
         }
       }
     }

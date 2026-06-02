@@ -16,8 +16,9 @@ const FORWARD_TRAVEL = 8.0;    // shoot far forward like a projectile
 
 // ── Body-animation parameters ─────────────────────────────────────────────────
 const ANIM_DURATION  = 0.28;
-const HEAD_DIP       = 0.72;   // radians — head nods down
-const BUM_BACK       = 0.04;   // units  — body slides back (bum bops out a little)
+const HEAD_DIP       = 0.72;   // radians — head rotates down
+const HEAD_DROP      = 0.12;   // units   — head also dips downward in Y
+const BUM_BACK       = 0.04;   // units   — body slides back (bum bops out a little)
 const BUM_TILT       = 0.04;   // radians — body tilts so rear lifts slightly
 
 interface Wave {
@@ -55,13 +56,15 @@ export function createBarkSystem(scene: Scene, pug: PugParts): () => void {
         const delta = pulse - lastPulse;
         lastPulse   = pulse;
 
-        pug.headPivot.rotation.x += HEAD_DIP * delta;
-        pug.body.position.z      -= BUM_BACK * delta;
+        pug.headPivot.rotation.x += HEAD_DIP  * delta;
+        pug.headPivot.position.y -= HEAD_DROP * delta;
+        pug.body.position.z      -= BUM_BACK  * delta;
         pug.body.rotation.x      -= BUM_TILT * delta;
       } else {
         // Animation finished — snap out any float-precision residual
-        pug.headPivot.rotation.x -= HEAD_DIP * lastPulse;
-        pug.body.position.z      += BUM_BACK * lastPulse;
+        pug.headPivot.rotation.x -= HEAD_DIP  * lastPulse;
+        pug.headPivot.position.y += HEAD_DROP * lastPulse;
+        pug.body.position.z      += BUM_BACK  * lastPulse;
         pug.body.rotation.x      += BUM_TILT * lastPulse;
         lastPulse = 0;
         barkAnimT = -1;

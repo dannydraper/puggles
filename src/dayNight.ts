@@ -149,7 +149,7 @@ export function createDayNightCycle(scene: Scene): { getTimeOfDay: () => number 
   // Fixed moon position in the sky (matches night light direction)
   moonDisc.position.set(-70, 188, -118);
 
-  let timeOfDay = 0.33;
+  let timeOfDay = 0.42;  // fixed mid-morning
 
   function apply(tod: number) {
     const k   = sample(tod);
@@ -189,8 +189,6 @@ export function createDayNightCycle(scene: Scene): { getTimeOfDay: () => number 
   apply(timeOfDay); // set correct state before first render
 
   scene.onBeforeRenderObservable.add(() => {
-    const dt = scene.getEngine().getDeltaTime() / 1000;
-    timeOfDay = (timeOfDay + dt / CYCLE_SECONDS) % 1;
     apply(timeOfDay);
   });
 

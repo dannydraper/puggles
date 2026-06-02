@@ -4,6 +4,8 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { VertexData } from "@babylonjs/core/Meshes/mesh.vertexData";
+import { PhysicsAggregate } from "@babylonjs/core/Physics/v2/physicsAggregate";
+import { PhysicsShapeType } from "@babylonjs/core/Physics/v2/IPhysicsEnginePlugin";
 
 // ── Terrain height function ────────────────────────────────────────────────────
 // Gaussian hills in the outer ring; center (paths) and pond area stay flat.
@@ -41,40 +43,6 @@ export function groundHeight(x: number, z: number): number {
   return h * fade;
 }
 
-// ── Static obstacle collision ──────────────────────────────────────────────────
-// Each bench is approximated as a circle. Correct entity position so it doesn't
-// overlap; returns [newX, newZ, didHit].
-
-export interface CircleObstacle { x: number; z: number; r: number; }
-
-export const OBSTACLES: CircleObstacle[] = [
-  { x:  8,  z:  0,  r: 1.2 },
-  { x: -8,  z:  0,  r: 1.2 },
-  { x:  0,  z:  8,  r: 1.2 },
-  { x:  0,  z: -8,  r: 1.2 },
-  { x: 20,  z: -6,  r: 1.2 },
-  { x: -20, z:  6,  r: 1.2 },
-];
-
-export function pushOutOfObstacles(
-  x: number, z: number, radius: number,
-): [number, number, boolean] {
-  let hit = false;
-  for (const obs of OBSTACLES) {
-    const dx = x - obs.x, dz = z - obs.z;
-    const d2 = dx * dx + dz * dz;
-    const minD = radius + obs.r;
-    if (d2 < minD * minD) {
-      const d = Math.sqrt(d2) || 0.0001;
-      const push = minD - d;
-      x += (dx / d) * push;
-      z += (dz / d) * push;
-      hit = true;
-    }
-  }
-  return [x, z, hit];
-}
-
 // ── Entry point ────────────────────────────────────────────────────────────────
 
 export function createEnvironment(scene: Scene): void {
@@ -86,6 +54,7 @@ export function createEnvironment(scene: Scene): void {
   buildBushes(scene, m);
   buildFlowers(scene, m);
   buildBenches(scene, m);
+  buildBorderWalls(scene);
 }
 
 function buildMaterials(scene: Scene) {
@@ -152,6 +121,9 @@ function buildGround(scene: Scene, m: Mats) {
   const normals = new Float32Array(pos.length);
   VertexData.ComputeNormals(pos, indices, normals);
   g.updateVerticesData("normal", normals);
+
+  // Physics triangle-mesh collider (static) — reads vertex data set above
+  new PhysicsAggregate(g, PhysicsShapeType.MESH, { mass: 0, restitution: 0.1, friction: 0.8 }, scene);
 }
 
 function buildPaths(scene: Scene, m: Mats) {
@@ -174,6 +146,12 @@ function buildPond(scene: Scene, m: Mats) {
   rim.rotation.x = Math.PI / 2;
   rim.position.set(22, 0.12, 18);
   rim.material = m.stone;
+
+  // Solid disc collider so characters can't wade into the pond
+  const pondCol = MeshBuilder.CreateCylinder("pondCol", { height: 0.4, diameter: 14.5, tessellation: 24 }, scene);
+  pondCol.position.set(22, -0.2, 18);
+  pondCol.isVisible = false;
+  new PhysicsAggregate(pondCol, PhysicsShapeType.CYLINDER, { mass: 0 }, scene);
 }
 
 const TREE_POSITIONS: [number, number][] = [
@@ -202,13 +180,12 @@ function buildBroadTree(scene: Scene, m: Mats, x: number, z: number, s: number, 
   // 3 angled branches at upper third of trunk
   const branchDirs = [0, Math.PI * 0.65, Math.PI * 1.35];
   branchDirs.forEach((dir, bi) => {
-    const upTilt  = 0.42 + Math.random() * 0.22;   // angle from horizontal (rad)
+    const upTilt  = 0.42 + Math.random() * 0.22;
     const bLen    = (1.6 + Math.random() * 1.0) * s;
     const branch  = MeshBuilder.CreateCylinder(`bBranch_${i}_${bi}`, {
       height: bLen, diameterBottom: 0.18 * s, diameterTop: 0.06 * s, tessellation: 6,
     }, scene);
     branch.material = m.trunk;
-    // Rotate so the cylinder points in the branch direction
     branch.rotation.z = Math.PI / 2 - upTilt;
     branch.rotation.y = dir;
     const attachY   = gy + trunkH * 0.72;
@@ -315,6 +292,13 @@ function buildTrees(scene: Scene, m: Mats) {
     if      (roll < 0.45) buildBroadTree(scene, m, x, z, s, i);
     else if (roll < 0.72) buildConiferTree(scene, m, x, z, s, i);
     else                  buildBushyTree(scene, m, x, z, s, i);
+
+    // Physics trunk collider — one capsule per tree regardless of type
+    const gy  = groundHeight(x, z);
+    const col = MeshBuilder.CreateCylinder(`tCol_${i}`, { height: 6, diameter: 0.55, tessellation: 8 }, scene);
+    col.position.set(x, gy + 3, z);
+    col.isVisible = false;
+    new PhysicsAggregate(col, PhysicsShapeType.CYLINDER, { mass: 0 }, scene);
   });
 }
 
@@ -403,5 +387,29 @@ function buildBenches(scene: Scene, m: Mats) {
       leg.material = m.stone;
       leg.parent = root;
     });
+
+    // Single box physics collider approximating the whole bench
+    const col = MeshBuilder.CreateBox(`bCol_${i}`, { width: 1.9, height: 0.85, depth: 0.55 }, scene);
+    col.position.set(x, gy + 0.43, z);
+    col.rotation.y = ry;
+    col.isVisible = false;
+    new PhysicsAggregate(col, PhysicsShapeType.BOX, { mass: 0 }, scene);
+  });
+}
+
+function buildBorderWalls(scene: Scene) {
+  const BORDER = 66;
+  const WALL_H = 12;
+  const walls = [
+    { x: 0,       z:  BORDER, w: BORDER * 2 + 4, d: 2 },
+    { x: 0,       z: -BORDER, w: BORDER * 2 + 4, d: 2 },
+    { x:  BORDER, z: 0,       w: 2, d: BORDER * 2 + 4 },
+    { x: -BORDER, z: 0,       w: 2, d: BORDER * 2 + 4 },
+  ];
+  walls.forEach(({ x, z, w, d }, i) => {
+    const wall = MeshBuilder.CreateBox(`bWall_${i}`, { width: w, height: WALL_H, depth: d }, scene);
+    wall.position.set(x, WALL_H / 2 - 1, z);
+    wall.isVisible = false;
+    new PhysicsAggregate(wall, PhysicsShapeType.BOX, { mass: 0 }, scene);
   });
 }

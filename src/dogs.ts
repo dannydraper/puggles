@@ -5,24 +5,32 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
-import { groundHeight, pushOutOfObstacles } from "./environment";
+import { PhysicsCharacterController, CharacterSupportedState } from "@babylonjs/core/Physics/v2/characterController";
+import { groundHeight } from "./environment";
+
+const GRAVITY = 9.81;
+
+// Capsule shared by all dog agents — small enough for the shortest breed (Dachshund)
+const DOG_CAP_RADIUS = 0.28;
+const DOG_CAP_HEIGHT = 0.36;
+const DOG_CAP_OFFSET = DOG_CAP_RADIUS + DOG_CAP_HEIGHT / 2;  // 0.46 — centre to feet
 
 // ── Breed definitions ──────────────────────────────────────────────────────────
 
 interface BreedDef {
   name: string;
   bodyColor: Color3;
-  accentColor: Color3;   // chest patch / face markings
-  legHeight: number;     // hip pivot height — drives overall tallness
+  accentColor: Color3;
+  legHeight: number;
   legThick: number;
   bodyX: number; bodyY: number; bodyZ: number;
   headSize: number;
-  snoutOut: number;      // extra snout protrusion beyond head radius
+  snoutOut: number;
   earType: "floppy" | "pointy";
   earW: number; earH: number;
   tailType: "curly" | "straight" | "stub";
   hasSpots: boolean;
-  speed: number;
+  speed: number;   // units per second
   spawnX: number; spawnZ: number;
 }
 
@@ -34,7 +42,7 @@ const BREEDS: BreedDef[] = [
     bodyX: 0.70, bodyY: 0.58, bodyZ: 2.00,
     headSize: 0.50, snoutOut: 0.28,
     earType: "floppy", earW: 0.22, earH: 0.34,
-    tailType: "straight", hasSpots: false, speed: 0.044,
+    tailType: "straight", hasSpots: false, speed: 2.6,
     spawnX: -14, spawnZ: 6,
   },
   {
@@ -44,7 +52,7 @@ const BREEDS: BreedDef[] = [
     bodyX: 0.90, bodyY: 0.88, bodyZ: 1.12,
     headSize: 0.64, snoutOut: 0.38,
     earType: "floppy", earW: 0.24, earH: 0.30,
-    tailType: "straight", hasSpots: true, speed: 0.066,
+    tailType: "straight", hasSpots: true, speed: 4.0,
     spawnX: 10, spawnZ: -18,
   },
   {
@@ -54,7 +62,7 @@ const BREEDS: BreedDef[] = [
     bodyX: 0.95, bodyY: 0.86, bodyZ: 1.20,
     headSize: 0.70, snoutOut: 0.38,
     earType: "floppy", earW: 0.28, earH: 0.34,
-    tailType: "straight", hasSpots: false, speed: 0.058,
+    tailType: "straight", hasSpots: false, speed: 3.5,
     spawnX: 14, spawnZ: 22,
   },
   {
@@ -64,7 +72,7 @@ const BREEDS: BreedDef[] = [
     bodyX: 0.88, bodyY: 0.70, bodyZ: 1.18,
     headSize: 0.72, snoutOut: 0.30,
     earType: "pointy", earW: 0.20, earH: 0.34,
-    tailType: "stub", hasSpots: false, speed: 0.055,
+    tailType: "stub", hasSpots: false, speed: 3.3,
     spawnX: -20, spawnZ: -8,
   },
   {
@@ -74,7 +82,7 @@ const BREEDS: BreedDef[] = [
     bodyX: 0.94, bodyY: 0.90, bodyZ: 1.16,
     headSize: 0.72, snoutOut: 0.36,
     earType: "pointy", earW: 0.20, earH: 0.32,
-    tailType: "straight", hasSpots: false, speed: 0.070,
+    tailType: "straight", hasSpots: false, speed: 4.2,
     spawnX: 4, spawnZ: -22,
   },
   {
@@ -84,7 +92,7 @@ const BREEDS: BreedDef[] = [
     bodyX: 0.82, bodyY: 0.78, bodyZ: 1.05,
     headSize: 0.65, snoutOut: 0.34,
     earType: "floppy", earW: 0.28, earH: 0.36,
-    tailType: "straight", hasSpots: false, speed: 0.052,
+    tailType: "straight", hasSpots: false, speed: 3.1,
     spawnX: -24, spawnZ: 20,
   },
   {
@@ -94,7 +102,7 @@ const BREEDS: BreedDef[] = [
     bodyX: 0.76, bodyY: 0.82, bodyZ: 0.96,
     headSize: 0.85, snoutOut: 0.32,
     earType: "floppy", earW: 0.30, earH: 0.38,
-    tailType: "curly", hasSpots: false, speed: 0.048,
+    tailType: "curly", hasSpots: false, speed: 2.9,
     spawnX: 24, spawnZ: -20,
   },
   {
@@ -104,7 +112,7 @@ const BREEDS: BreedDef[] = [
     bodyX: 1.02, bodyY: 0.92, bodyZ: 1.20,
     headSize: 0.74, snoutOut: 0.38,
     earType: "floppy", earW: 0.28, earH: 0.30,
-    tailType: "straight", hasSpots: false, speed: 0.060,
+    tailType: "straight", hasSpots: false, speed: 3.6,
     spawnX: 30, spawnZ: 8,
   },
   {
@@ -114,7 +122,7 @@ const BREEDS: BreedDef[] = [
     bodyX: 0.68, bodyY: 0.96, bodyZ: 1.32,
     headSize: 0.54, snoutOut: 0.55,
     earType: "floppy", earW: 0.18, earH: 0.22,
-    tailType: "straight", hasSpots: false, speed: 0.090,
+    tailType: "straight", hasSpots: false, speed: 5.4,
     spawnX: -30, spawnZ: -22,
   },
   {
@@ -124,7 +132,7 @@ const BREEDS: BreedDef[] = [
     bodyX: 0.88, bodyY: 0.85, bodyZ: 1.18,
     headSize: 0.68, snoutOut: 0.42,
     earType: "pointy", earW: 0.20, earH: 0.30,
-    tailType: "straight", hasSpots: false, speed: 0.062,
+    tailType: "straight", hasSpots: false, speed: 3.7,
     spawnX: 20, spawnZ: -26,
   },
 ];
@@ -156,7 +164,6 @@ function buildDog(scene: Scene, b: BreedDef): { root: TransformNode; body: Mesh;
 
   const root = new TransformNode(`${b.name}_root`, scene);
 
-  // Key layout constants derived from breed proportions
   const bodyY   = b.legHeight + b.bodyY * 0.28;
   const headZ   = b.bodyZ * 0.44;
   const headY   = bodyY + b.bodyY * 0.36;
@@ -166,14 +173,12 @@ function buildDog(scene: Scene, b: BreedDef): { root: TransformNode; body: Mesh;
   const legFZ   =  b.bodyZ * 0.26;
   const legBZ   = -b.bodyZ * 0.26;
 
-  // Body
   const body = MeshBuilder.CreateSphere(`${b.name}_body`, { diameter: 1.0, segments: 7 }, scene);
   body.scaling.set(b.bodyX, b.bodyY, b.bodyZ);
   body.position.set(0, bodyY, 0);
   body.material = bodyMat;
   body.parent = root;
 
-  // Chest accent patch (for two-tone breeds)
   if (!b.bodyColor.equals(b.accentColor)) {
     const chest = MeshBuilder.CreateSphere(`${b.name}_chest`, { diameter: 0.55, segments: 5 }, scene);
     chest.scaling.set(b.bodyX * 0.70, b.bodyY * 0.60, 0.55);
@@ -182,7 +187,6 @@ function buildDog(scene: Scene, b: BreedDef): { root: TransformNode; body: Mesh;
     chest.parent = root;
   }
 
-  // Dalmatian spots
   if (b.hasSpots) {
     const spotMat = new StandardMaterial(`${b.name}_spot`, scene);
     spotMat.diffuseColor = new Color3(0.12, 0.10, 0.10);
@@ -199,26 +203,22 @@ function buildDog(scene: Scene, b: BreedDef): { root: TransformNode; body: Mesh;
     }
   }
 
-  // Head
   const head = MeshBuilder.CreateSphere(`${b.name}_head`, { diameter: b.headSize, segments: 7 }, scene);
   head.position.set(0, headY, headZ);
   head.material = bodyMat;
   head.parent = root;
 
-  // Snout
   const snout = MeshBuilder.CreateSphere(`${b.name}_snout`, { diameter: b.headSize * 0.52, segments: 6 }, scene);
   snout.scaling.set(0.88, 0.68, 0.55 + b.snoutOut * 0.5);
   snout.position.set(0, snoutY, snoutZ);
   snout.material = accentMat;
   snout.parent = root;
 
-  // Nose
   const nose = MeshBuilder.CreateSphere(`${b.name}_nose`, { diameter: b.headSize * 0.18, segments: 5 }, scene);
   nose.position.set(0, snoutY + b.headSize * 0.06, snoutZ + b.headSize * 0.24 + b.snoutOut * 0.2);
   nose.material = darkMat;
   nose.parent = root;
 
-  // Eyes
   const eyeD  = b.headSize * 0.18;
   const eyeXO = b.headSize * 0.28;
   const eyeZO = headZ + b.headSize * 0.30;
@@ -230,7 +230,6 @@ function buildDog(scene: Scene, b: BreedDef): { root: TransformNode; body: Mesh;
     eye.parent = root;
   }
 
-  // Ears
   if (b.earType === "floppy") {
     for (const xSign of [-1, 1]) {
       const ear = MeshBuilder.CreateSphere(`${b.name}_ear_${xSign}`, { diameter: b.earW, segments: 5 }, scene);
@@ -241,7 +240,6 @@ function buildDog(scene: Scene, b: BreedDef): { root: TransformNode; body: Mesh;
       ear.parent = root;
     }
   } else {
-    // Pointy ears — tapered cylinder standing upright
     for (const xSign of [-1, 1]) {
       const ear = MeshBuilder.CreateCylinder(`${b.name}_ear_${xSign}`, {
         height: b.earH,
@@ -256,7 +254,6 @@ function buildDog(scene: Scene, b: BreedDef): { root: TransformNode; body: Mesh;
     }
   }
 
-  // Tail
   if (b.tailType === "curly") {
     const tail = MeshBuilder.CreateTorus(`${b.name}_tail`, { diameter: 0.28, thickness: 0.09, tessellation: 12 }, scene);
     tail.position.set(0, bodyY + b.bodyY * 0.12, -b.bodyZ * 0.44);
@@ -270,14 +267,12 @@ function buildDog(scene: Scene, b: BreedDef): { root: TransformNode; body: Mesh;
     tail.material = bodyMat;
     tail.parent = root;
   } else {
-    // stub
     const tail = MeshBuilder.CreateSphere(`${b.name}_tail`, { diameter: 0.14, segments: 4 }, scene);
     tail.position.set(0, bodyY + b.bodyY * 0.18, -b.bodyZ * 0.46);
     tail.material = bodyMat;
     tail.parent = root;
   }
 
-  // Legs — pivot at hip/shoulder, cylinder + paw hang below
   function makeLeg(id: string, x: number, z: number): TransformNode {
     const pivot = new TransformNode(`${b.name}_${id}`, scene);
     pivot.position.set(x, b.legHeight, z);
@@ -316,15 +311,17 @@ interface DogAgent {
   body:         Mesh;
   legs:         LegPivots;
   breed:        BreedDef;
+  cc:           PhysicsCharacterController;
   target:       Vector3;
   state:        "walking" | "paused";
   pauseTimer:   number;
   walkClock:    number;
-  radius:       number;   // collision circle radius
-  bumpCooldown: number;   // seconds before another obstacle pick-new-target
+  gravityVel:   number;
+  radius:       number;
+  bumpCooldown: number;
 }
 
-const POND_X = 22, POND_Z = 18, POND_R2 = 110;  // squared avoidance radius
+const POND_X = 22, POND_Z = 18, POND_R2 = 110;
 
 function pickTarget(from: Vector3): Vector3 {
   for (let i = 0; i < 12; i++) {
@@ -341,6 +338,9 @@ function pickTarget(from: Vector3): Vector3 {
   return new Vector3(fx, groundHeight(fx, fz), fz);
 }
 
+const gravity   = new Vector3(0, -GRAVITY, 0);
+const downDir   = new Vector3(0, -1, 0);
+
 function updateAgent(a: DogAgent, dt: number): void {
   if (a.bumpCooldown > 0) a.bumpCooldown -= dt;
 
@@ -350,11 +350,26 @@ function updateAgent(a: DogAgent, dt: number): void {
       a.target = pickTarget(a.root.position);
       a.state  = "walking";
     }
+    // Settle legs to rest
     const damp = 1 - Math.exp(-dt * 8);
     a.legs.fl.rotation.x += (0 - a.legs.fl.rotation.x) * damp;
     a.legs.fr.rotation.x += (0 - a.legs.fr.rotation.x) * damp;
     a.legs.bl.rotation.x += (0 - a.legs.bl.rotation.x) * damp;
     a.legs.br.rotation.x += (0 - a.legs.br.rotation.x) * damp;
+
+    // Let gravity keep the dog on the ground while paused
+    const support = a.cc.checkSupport(dt, downDir);
+    if (support.supportedState >= CharacterSupportedState.SLIDING) {
+      a.gravityVel = 0;
+    } else {
+      a.gravityVel -= GRAVITY * dt;
+    }
+    a.cc.setVelocity(new Vector3(0, a.gravityVel, 0));
+    a.cc.integrate(dt, support, gravity);
+    const p = a.cc.getPosition();
+    a.root.position.x = p.x;
+    a.root.position.y = p.y - DOG_CAP_OFFSET;
+    a.root.position.z = p.z;
     return;
   }
 
@@ -368,28 +383,32 @@ function updateAgent(a: DogAgent, dt: number): void {
     return;
   }
 
-  // Smoothly rotate to face target
+  // Rotate to face target
   const desired = Math.atan2(dx, dz);
   let   delta   = desired - a.root.rotation.y;
   while (delta >  Math.PI) delta -= Math.PI * 2;
   while (delta < -Math.PI) delta += Math.PI * 2;
   a.root.rotation.y += delta * Math.min(1, dt * 4);
 
-  // Advance
-  const speed = a.breed.speed;
-  a.root.position.x += (dx / dist) * speed;
-  a.root.position.z += (dz / dist) * speed;
-
-  // Obstacle collision — push out and pick a new destination
-  const [nx, nz, hitObs] = pushOutOfObstacles(a.root.position.x, a.root.position.z, a.radius);
-  a.root.position.x = nx;
-  a.root.position.z = nz;
-  if (hitObs && a.bumpCooldown <= 0) {
-    a.target       = pickTarget(a.root.position);
-    a.bumpCooldown = 1.2;
+  // Physics movement
+  const support = a.cc.checkSupport(dt, downDir);
+  if (support.supportedState >= CharacterSupportedState.SLIDING) {
+    a.gravityVel = 0;
+  } else {
+    a.gravityVel -= GRAVITY * dt;
   }
 
-  a.root.position.y = groundHeight(a.root.position.x, a.root.position.z);
+  const speed  = a.breed.speed;
+  const normDx = dx / dist;
+  const normDz = dz / dist;
+
+  a.cc.setVelocity(new Vector3(normDx * speed, a.gravityVel, normDz * speed));
+  a.cc.integrate(dt, support, gravity);
+
+  const p = a.cc.getPosition();
+  a.root.position.x = p.x;
+  a.root.position.y = p.y - DOG_CAP_OFFSET;
+  a.root.position.z = p.z;
 
   // Leg animation (diagonal trot)
   a.walkClock += dt * 9;
@@ -409,14 +428,22 @@ function updateAgent(a: DogAgent, dt: number): void {
 export function createAllDogs(scene: Scene): void {
   const agents: DogAgent[] = BREEDS.map((breed) => {
     const { root, body, legs } = buildDog(scene, breed);
-    root.position.set(breed.spawnX, groundHeight(breed.spawnX, breed.spawnZ), breed.spawnZ);
-    const pauseTimer = Math.random() * 2;
+    const spawnY = groundHeight(breed.spawnX, breed.spawnZ);
+    root.position.set(breed.spawnX, spawnY, breed.spawnZ);
+
+    const cc = new PhysicsCharacterController(
+      new Vector3(breed.spawnX, spawnY + DOG_CAP_OFFSET + 0.2, breed.spawnZ),
+      { capsuleHeight: DOG_CAP_HEIGHT, capsuleRadius: DOG_CAP_RADIUS },
+      scene,
+    );
+
     return {
-      root, body, legs, breed,
+      root, body, legs, breed, cc,
       target:       pickTarget(root.position),
       state:        "paused" as const,
-      pauseTimer,
+      pauseTimer:   Math.random() * 2,
       walkClock:    Math.random() * Math.PI * 2,
+      gravityVel:   0,
       radius:       breed.bodyX * 0.42 + 0.10,
       bumpCooldown: 0,
     };
@@ -427,7 +454,7 @@ export function createAllDogs(scene: Scene): void {
 
     for (const agent of agents) updateAgent(agent, dt);
 
-    // ── Dog-dog separation ─────────────────────────────────────
+    // ── Dog-dog separation (physics CCs don't push each other) ────
     for (let i = 0; i < agents.length; i++) {
       for (let j = i + 1; j < agents.length; j++) {
         const a = agents[i], b = agents[j];
@@ -438,13 +465,19 @@ export function createAllDogs(scene: Scene): void {
         if (d2 < min * min && d2 > 0.0001) {
           const d    = Math.sqrt(d2);
           const push = (min - d) * 0.5 / d;
-          a.root.position.x += dx * push;
-          a.root.position.z += dz * push;
-          b.root.position.x -= dx * push;
-          b.root.position.z -= dz * push;
-          a.root.position.y = groundHeight(a.root.position.x, a.root.position.z);
-          b.root.position.y = groundHeight(b.root.position.x, b.root.position.z);
-          // Both dogs pick new targets after a bump (with cooldown)
+          const ax   = a.root.position.x + dx * push;
+          const az   = a.root.position.z + dz * push;
+          const bx   = b.root.position.x - dx * push;
+          const bz   = b.root.position.z - dz * push;
+          const agy  = groundHeight(ax, az);
+          const bgy  = groundHeight(bx, bz);
+
+          a.root.position.set(ax, agy, az);
+          b.root.position.set(bx, bgy, bz);
+          // PhysicsCharacterController has no public setPosition — write _position directly
+          (a.cc as any)._position.set(ax, agy + DOG_CAP_OFFSET, az);
+          (b.cc as any)._position.set(bx, bgy + DOG_CAP_OFFSET, bz);
+
           if (a.state === "walking" && a.bumpCooldown <= 0) {
             a.target = pickTarget(a.root.position);
             a.bumpCooldown = 1.0;

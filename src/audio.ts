@@ -29,6 +29,7 @@ export function playBark(): void {
   if (!_barkBuffer) return;
   const src = ac.createBufferSource();
   src.buffer = _barkBuffer;
+  src.playbackRate.value = 1.6;
   src.connect(ac.destination);
   src.start();
 }

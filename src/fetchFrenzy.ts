@@ -59,6 +59,7 @@ interface FetchRing {
   arcHeight:     number;
   arcDuration:   number;
   despawnTimer:  number;
+  maxDespawn:    number;   // cached at spawn time — avoids recomputing per frame
   landTime:      number;   // timestamp when ring hit the ground
   owner:         OwnerNPC;
 }
@@ -88,12 +89,12 @@ function pickLandingSpot(): Vector3 {
   return new Vector3(8, groundHeight(8, 8) + 0.14, 8);
 }
 
+const _arcTmp = new Vector3();
 function arcPos(start: Vector3, end: Vector3, height: number, t: number): Vector3 {
-  return new Vector3(
-    start.x + (end.x - start.x) * t,
-    start.y + (end.y - start.y) * t + height * Math.sin(Math.PI * t),
-    start.z + (end.z - start.z) * t,
-  );
+  _arcTmp.x = start.x + (end.x - start.x) * t;
+  _arcTmp.y = start.y + (end.y - start.y) * t + height * Math.sin(Math.PI * t);
+  _arcTmp.z = start.z + (end.z - start.z) * t;
+  return _arcTmp;
 }
 
 function despawnTime(): number {
@@ -183,6 +184,7 @@ function spawnRing(scene: Scene, owner: OwnerNPC, colorIdx: number): FetchRing {
   mesh.position.copyFrom(owner.throwOrigin);
 
   const end = pickLandingSpot();
+  const dt  = despawnTime();
   return {
     mesh, mat,
     state:       'arc',
@@ -191,7 +193,8 @@ function spawnRing(scene: Scene, owner: OwnerNPC, colorIdx: number): FetchRing {
     arcEnd:      end,
     arcHeight:   5.5,
     arcDuration: 1.6,
-    despawnTimer: despawnTime(),
+    despawnTimer: dt,
+    maxDespawn:   dt,
     landTime:    0,
     owner,
   };
@@ -255,7 +258,15 @@ function createGameHUD(): {
     overflow:     "hidden",
   });
   const timerFill = document.createElement("div");
-  Object.assign(timerFill.style, { height: "100%", borderRadius: "3px", transition: "background .3s" });
+  // Use transform:scaleX instead of width — avoids layout recalc every frame
+  Object.assign(timerFill.style, {
+    height:          "100%",
+    width:           "100%",
+    borderRadius:    "3px",
+    transformOrigin: "left center",
+    transform:       "scaleX(1)",
+    background:      "#44dd66",
+  });
   timerBar.appendChild(timerFill);
 
   wrap.appendChild(card);
@@ -280,12 +291,17 @@ function createGameHUD(): {
       statusTimeout = window.setTimeout(() => { status.style.opacity = "0"; }, 2000);
     },
     showTimer(t, max) {
-      timerBar.style.display = "block";
-      const frac = Math.max(0, t / max);
-      timerFill.style.width      = `${frac * 100}%`;
-      timerFill.style.background = frac > 0.5 ? "#44dd66" : frac > 0.25 ? "#ffcc22" : "#ff4422";
+      if (timerBar.style.display !== "block") timerBar.style.display = "block";
+      const frac   = Math.max(0, t / max);
+      // scaleX doesn't trigger layout — safe to call every frame
+      timerFill.style.transform = `scaleX(${frac})`;
+      // Only update background on threshold crossings (3 states, not every frame)
+      const bg = frac > 0.5 ? "#44dd66" : frac > 0.25 ? "#ffcc22" : "#ff4422";
+      if (timerFill.style.background !== bg) timerFill.style.background = bg;
     },
-    hideTimer() { timerBar.style.display = "none"; },
+    hideTimer() {
+      if (timerBar.style.display !== "none") timerBar.style.display = "none";
+    },
   };
 }
 
@@ -423,6 +439,8 @@ export function startFetchFrenzy(scene: Scene, pugRoot: TransformNode): void {
           const s = Math.max(0, 1 - o.stateT / 0.4);
           o.root.scaling.setAll(s);
           if (o.stateT >= 0.5) {
+            // Dispose materials to prevent accumulation across rounds
+            o.root.getChildMeshes().forEach(m => m.material?.dispose());
             o.root.dispose();
             activeOwner = null;
           }
@@ -459,18 +477,16 @@ export function startFetchFrenzy(scene: Scene, pugRoot: TransformNode): void {
           r.mesh.position.y = r.arcEnd.y + Math.sin(now * 0.003) * 0.06;
           r.mesh.rotation.y += dt * 1.8;
           // Colour: green → yellow → red
-          const urgency = 1 - Math.max(0, r.despawnTimer) / despawnTime();
-          r.mat.emissiveColor = new Color3(
-            Math.min(1, urgency * 2),
-            Math.max(0, 1 - urgency * 1.2),
-            0,
-          );
+          const urgency = 1 - Math.max(0, r.despawnTimer) / r.maxDespawn;
+          r.mat.emissiveColor.r = Math.min(1, urgency * 2);
+          r.mat.emissiveColor.g = Math.max(0, 1 - urgency * 1.2);
+          r.mat.emissiveColor.b = 0;
           // Pulse faster when urgent
           if (r.despawnTimer < 3) {
             const pulse = (Math.sin(now * 0.018 * (4 - r.despawnTimer)) + 1) * 0.5;
             r.mesh.scaling.setAll(0.8 + pulse * 0.4);
           }
-          hud.showTimer(Math.max(0, r.despawnTimer), despawnTime());
+          hud.showTimer(Math.max(0, r.despawnTimer), r.maxDespawn);
 
           // Check catch
           const dx = r.mesh.position.x - pugRoot.position.x;

@@ -16,7 +16,7 @@ const FORWARD_TRAVEL = 8.0;    // shoot far forward like a projectile
 
 // ── Body-animation parameters ─────────────────────────────────────────────────
 const ANIM_DURATION  = 0.28;
-const HEAD_DIP       = 0.40;   // radians — head nods down
+const HEAD_DIP       = 0.72;   // radians — head nods down
 const BUM_BACK       = 0.04;   // units  — body slides back (bum bops out a little)
 const BUM_TILT       = 0.04;   // radians — body tilts so rear lifts slightly
 

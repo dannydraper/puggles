@@ -5,6 +5,7 @@ import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { PugParts } from "./pug";
+import { playBark } from "./audio";
 
 // ── Sound-wave rings ───────────────────────────────────────────────────────────
 const WAVE_DURATION  = 0.42;   // faster travel
@@ -112,6 +113,7 @@ export function createBarkSystem(scene: Scene, pug: PugParts): () => void {
     cooldown  = 0.45;
     barkAnimT = 0;
     lastPulse = 0;
+    playBark();
 
     const snoutLocal = new Vector3(0, -0.02, 0.40);
     const snoutWorld = Vector3.TransformCoordinates(snoutLocal, pug.headPivot.getWorldMatrix());

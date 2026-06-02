@@ -425,7 +425,7 @@ function updateAgent(a: DogAgent, dt: number): void {
 
 // ── Public entry point ─────────────────────────────────────────────────────────
 
-export function createAllDogs(scene: Scene): void {
+export function createAllDogs(scene: Scene): TransformNode[] {
   const agents: DogAgent[] = BREEDS.map((breed) => {
     const { root, body, legs } = buildDog(scene, breed);
     const spawnY = groundHeight(breed.spawnX, breed.spawnZ);
@@ -490,4 +490,6 @@ export function createAllDogs(scene: Scene): void {
       }
     }
   });
+
+  return agents.map((a) => a.root);
 }

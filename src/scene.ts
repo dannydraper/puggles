@@ -13,6 +13,7 @@ import { createHUD } from "./hud";
 import { createAllDogs } from "./dogs";
 import { createDayNightCycle } from "./dayNight";
 import { createClouds } from "./clouds";
+import { createBalls } from "./balls";
 
 export function createScene(engine: Engine, havokInstance: unknown): Scene {
   const scene = new Scene(engine);
@@ -36,7 +37,8 @@ export function createScene(engine: Engine, havokInstance: unknown): Scene {
   const camera   = createPlayer(scene, pugParts);
   scene.activeCamera = camera;
 
-  createAllDogs(scene);
+  const dogRoots = createAllDogs(scene);
+  createBalls(scene, pugParts.root, dogRoots);
 
   const { getTimeOfDay } = createDayNightCycle(scene);
   createClouds(scene, getTimeOfDay);

@@ -7,12 +7,12 @@ import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { PugParts } from "./pug";
 
 // ── Sound-wave rings ───────────────────────────────────────────────────────────
-const WAVE_DURATION  = 0.55;
-const WAVE_STAGGER   = 0.11;
-const WAVES_PER_BARK = 3;
-const MAX_DIAMETER   = 0.72;
-const RING_THICKNESS = 0.032;
-const FORWARD_TRAVEL = 0.46;
+const WAVE_DURATION  = 0.42;   // faster travel
+const WAVE_STAGGER   = 0.065;  // tight burst spacing
+const WAVES_PER_BARK = 4;      // more rings = more weapon-y
+const MAX_DIAMETER   = 0.68;
+const RING_THICKNESS = 0.044;  // slightly thicker so they read at distance
+const FORWARD_TRAVEL = 8.0;    // shoot far forward like a projectile
 
 // ── Body-animation parameters ─────────────────────────────────────────────────
 const ANIM_DURATION  = 0.28;
@@ -83,16 +83,22 @@ export function createBarkSystem(scene: Scene, pug: PugParts): () => void {
         continue;
       }
 
-      const t    = elapsed / WAVE_DURATION;
-      const ease = t * (2 - t);   // ease-out
+      const t = elapsed / WAVE_DURATION;
 
-      w.mesh.scaling.setAll(Math.max(0.001, MAX_DIAMETER * ease));
+      // Rings snap to full diameter in first 20% then hold — weapon not flower
+      const scale = Math.min(t / 0.20, 1.0) * MAX_DIAMETER;
+      // Linear forward travel — constant projectile speed
+      const fwd   = t * FORWARD_TRAVEL;
+      // Stay opaque most of the way, only fade in final 30%
+      const alpha = t < 0.70 ? 0.90 : 0.90 * (1 - (t - 0.70) / 0.30);
+
+      w.mesh.scaling.setAll(Math.max(0.001, scale));
       w.mesh.position.set(
-        w.originX + w.fwdX * FORWARD_TRAVEL * ease,
-        w.originY + t * 0.08,
-        w.originZ + w.fwdZ * FORWARD_TRAVEL * ease,
+        w.originX + w.fwdX * fwd,
+        w.originY,
+        w.originZ + w.fwdZ * fwd,
       );
-      w.mat.alpha = (1 - t) * 0.82;
+      w.mat.alpha = alpha;
     }
   });
 
@@ -113,8 +119,8 @@ export function createBarkSystem(scene: Scene, pug: PugParts): () => void {
 
     for (let i = 0; i < WAVES_PER_BARK; i++) {
       const mat = new StandardMaterial(`barkMat_${Date.now()}_${i}`, scene);
-      mat.diffuseColor    = new Color3(1.00, 0.86, 0.18);
-      mat.emissiveColor   = new Color3(0.80, 0.60, 0.00);
+      mat.diffuseColor    = new Color3(1.00, 0.92, 0.30);
+      mat.emissiveColor   = new Color3(1.00, 0.75, 0.00);  // full bright emission
       mat.backFaceCulling = false;
       mat.alpha = 0;
 

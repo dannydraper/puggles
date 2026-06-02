@@ -15,10 +15,10 @@ const RING_THICKNESS = 0.032;
 const FORWARD_TRAVEL = 0.46;
 
 // ── Body-animation parameters ─────────────────────────────────────────────────
-const ANIM_DURATION  = 0.28;   // total bark-pose duration (seconds)
-const HEAD_DIP       = 0.40;   // how far headPivot.rotation.x dips (radians)
-const BUM_BACK       = 0.10;   // how far body slides back along its local Z
-const BUM_TILT       = 0.08;   // how much body.rotation.x tilts (bum lifts)
+const ANIM_DURATION  = 0.28;
+const HEAD_DIP       = 0.40;   // radians — head nods down
+const BUM_BACK       = 0.04;   // units  — body slides back (bum bops out a little)
+const BUM_TILT       = 0.04;   // radians — body tilts so rear lifts slightly
 
 interface Wave {
   mesh:     Mesh;
@@ -34,28 +34,36 @@ interface Wave {
 
 export function createBarkSystem(scene: Scene, pug: PugParts): () => void {
   const waves: Wave[] = [];
-  let cooldown  = 0;
-  let barkAnimT = -1;   // < 0 means inactive
+  let cooldown   = 0;
+  let barkAnimT  = -1;   // < 0 = inactive
+  let lastPulse  = 0;    // pulse value from previous frame — used for delta application
 
   scene.onBeforeRenderObservable.add(() => {
     const dt = scene.getEngine().getDeltaTime() / 1000;
     cooldown = Math.max(0, cooldown - dt);
 
     // ── Body animation ────────────────────────────────────────────────────────
+    // Delta approach: each frame we apply only the *change* in the sine pulse,
+    // so the total accumulated displacement across the full animation is zero —
+    // the bum and head always return to exactly where they started.
     if (barkAnimT >= 0) {
       barkAnimT += dt;
-      if (barkAnimT < ANIM_DURATION) {
-        // Single-pulse sine: peaks at t=0.5, zero at t=0 and t=1
-        const pulse = Math.sin(Math.PI * (barkAnimT / ANIM_DURATION));
+      const raw = barkAnimT / ANIM_DURATION;
 
-        // Head bops sharply downward
-        pug.headPivot.rotation.x += HEAD_DIP * pulse;
+      if (raw < 1.0) {
+        const pulse = Math.sin(Math.PI * raw);
+        const delta = pulse - lastPulse;
+        lastPulse   = pulse;
 
-        // Bum bops outward: body slides back and tilts so the rear lifts
-        // body.position.z is in body-local space (–Z = back/bum direction for the pug)
-        pug.body.position.z -= BUM_BACK * pulse;
-        pug.body.rotation.x -= BUM_TILT * pulse;   // negative = front rises, bum lifts
+        pug.headPivot.rotation.x += HEAD_DIP * delta;
+        pug.body.position.z      -= BUM_BACK * delta;
+        pug.body.rotation.x      -= BUM_TILT * delta;
       } else {
+        // Animation finished — snap out any float-precision residual
+        pug.headPivot.rotation.x -= HEAD_DIP * lastPulse;
+        pug.body.position.z      += BUM_BACK * lastPulse;
+        pug.body.rotation.x      += BUM_TILT * lastPulse;
+        lastPulse = 0;
         barkAnimT = -1;
       }
     }
@@ -93,7 +101,8 @@ export function createBarkSystem(scene: Scene, pug: PugParts): () => void {
   return function triggerBark(): void {
     if (cooldown > 0) return;
     cooldown  = 0.45;
-    barkAnimT = 0;   // start body animation
+    barkAnimT = 0;
+    lastPulse = 0;
 
     const snoutLocal = new Vector3(0, -0.02, 0.40);
     const snoutWorld = Vector3.TransformCoordinates(snoutLocal, pug.headPivot.getWorldMatrix());

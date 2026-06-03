@@ -27,43 +27,30 @@ export function createBalls(
   pugRoot: TransformNode,
   dogRoots: TransformNode[],
 ): void {
-  const whiteMat = new StandardMaterial("ballWhite", scene);
-  whiteMat.diffuseColor  = new Color3(0.96, 0.94, 0.90);
-  whiteMat.specularColor = new Color3(0.55, 0.55, 0.55);
-  whiteMat.specularPower = 48;
-
-  const patchMat = new StandardMaterial("ballPatch", scene);
-  patchMat.diffuseColor  = new Color3(0.10, 0.10, 0.10);
-  patchMat.specularColor = new Color3(0.15, 0.15, 0.15);
-
-  // Six patch directions — top, bottom, +x, −x, +z, −z
-  const patchDirs: [number, number, number][] = [
-    [ 0,  1,  0 ], [  0, -1,  0 ],
-    [ 1,  0,  0 ], [ -1,  0,  0 ],
-    [ 0,  0,  1 ], [  0,  0, -1 ],
+  // Each park ball gets its own vivid colour — clearly not footballs
+  const COLORS: [number,number,number][] = [
+    [0.92, 0.18, 0.18],  // red
+    [0.18, 0.42, 0.95],  // blue
+    [0.95, 0.75, 0.08],  // yellow
+    [0.18, 0.82, 0.30],  // green
+    [0.95, 0.48, 0.12],  // orange
+    [0.62, 0.18, 0.95],  // purple
+    [0.12, 0.88, 0.88],  // cyan
+    [0.95, 0.22, 0.68],  // pink
   ];
 
   const balls: Ball[] = SPAWN_XZ.map(([x, z], i) => {
-    const gy = groundHeight(x, z);
+    const gy  = groundHeight(x, z);
+    const [r, g, b] = COLORS[i % COLORS.length];
 
-    // Main ball sphere
+    const mat = new StandardMaterial(`ballMat_${i}`, scene);
+    mat.diffuseColor  = new Color3(r, g, b);
+    mat.specularColor = new Color3(0.5, 0.5, 0.5);
+    mat.specularPower = 40;
+
     const mesh = MeshBuilder.CreateSphere(`ball_${i}`, { diameter: BALL_D, segments: 8 }, scene);
-    mesh.position.set(x, gy + BALL_R + 0.6, z); // drop in from slightly above
-    mesh.material = whiteMat;
-
-    // Flat pentagon-ish patches for football look
-    patchDirs.forEach((dir, pi) => {
-      const patch = MeshBuilder.CreateSphere(
-        `ball_${i}_p${pi}`,
-        { diameter: BALL_D * 0.42, segments: 5 },
-        scene,
-      );
-      const o = BALL_R * 0.88;
-      patch.position.set(dir[0] * o, dir[1] * o, dir[2] * o);
-      patch.scaling.set(1.0, 0.14, 1.0); // squash into a disc
-      patch.material = patchMat;
-      patch.parent   = mesh;
-    });
+    mesh.position.set(x, gy + BALL_R + 0.6, z);
+    mesh.material = mat;
 
     // Dynamic physics body — bouncy football
     const aggregate = new PhysicsAggregate(

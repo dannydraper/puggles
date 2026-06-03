@@ -188,14 +188,27 @@ function buildKeeper(scene: Scene): Keeper {
 // ── Ball ───────────────────────────────────────────────────────────────────────
 interface PenaltyBall { mesh: Mesh; agg: PhysicsAggregate; }
 
+// 12 icosahedral vertex directions — the centres of the black pentagons
+// on a classic Telstar-pattern football.
+const φ = (1 + Math.sqrt(5)) / 2;
+const PENTAGON_DIRS: [number,number,number][] = [
+  [ 0, 1, φ], [ 0,-1, φ], [ 0, 1,-φ], [ 0,-1,-φ],
+  [ 1, φ, 0], [-1, φ, 0], [ 1,-φ, 0], [-1,-φ, 0],
+  [ φ, 0, 1], [-φ, 0, 1], [ φ, 0,-1], [-φ, 0,-1],
+].map(([x,y,z]) => {
+  const l = Math.sqrt(x*x + y*y + z*z);
+  return [x/l, y/l, z/l] as [number,number,number];
+});
+
 function makeBallMaterials(scene: Scene) {
   const white = new StandardMaterial("pbWhite", scene);
-  white.diffuseColor  = new Color3(0.96, 0.94, 0.90);
-  white.specularColor = new Color3(0.55, 0.55, 0.55);
-  white.specularPower = 48;
+  white.diffuseColor  = new Color3(0.97, 0.97, 0.97);
+  white.specularColor = new Color3(0.6, 0.6, 0.6);
+  white.specularPower = 52;
 
   const patch = new StandardMaterial("pbPatch", scene);
-  patch.diffuseColor = new Color3(0.08, 0.08, 0.08);
+  patch.diffuseColor  = new Color3(0.06, 0.06, 0.06);
+  patch.specularColor = new Color3(0.1, 0.1, 0.1);
 
   return { white, patch };
 }
@@ -219,14 +232,12 @@ function spawnBall(scene: Scene, existingMesh?: Mesh): PenaltyBall {
     mesh.position.set(0, gy + BALL_D / 2 + 0.02, SPOT_Z);
     mesh.material = mats.white;
 
-    const dirs: [number, number, number][] = [
-      [0,1,0],[0,-1,0],[1,0,0],[-1,0,0],[0,0,1],[0,0,-1],
-    ];
-    dirs.forEach(([dx, dy, dz], i) => {
-      const p = MeshBuilder.CreateSphere(`pbPatch${i}`, { diameter: BALL_D * 0.42, segments: 5 }, scene);
-      const o = BALL_D * 0.44;
-      p.position.set(dx * o, dy * o, dz * o);
-      p.scaling.set(1, 0.14, 1);
+    // 12 black pentagons at icosahedral positions — classic Telstar football
+    PENTAGON_DIRS.forEach(([nx, ny, nz], i) => {
+      const p = MeshBuilder.CreateSphere(`pbPatch${i}`, { diameter: BALL_D * 0.36, segments: 5 }, scene);
+      const o = BALL_D * 0.455;
+      p.position.set(nx * o, ny * o, nz * o);
+      p.scaling.set(1, 0.18, 1);
       p.material = mats.patch;
       p.parent   = mesh;
     });

@@ -213,7 +213,7 @@ function makeBallMaterials(scene: Scene) {
   return { white, patch };
 }
 
-function spawnBall(scene: Scene, existingMesh?: Mesh): PenaltyBall {
+function spawnBall(scene: Scene): PenaltyBall {
   const mats = (scene as any).__penaltyBallMats ?? (() => {
     const m = makeBallMaterials(scene);
     (scene as any).__penaltyBallMats = m;
@@ -221,27 +221,19 @@ function spawnBall(scene: Scene, existingMesh?: Mesh): PenaltyBall {
   })();
 
   const gy  = groundHeight(0, SPOT_Z);
-  let mesh: Mesh;
+  const mesh = MeshBuilder.CreateSphere("penaltyBall", { diameter: BALL_D, segments: 8 }, scene);
+  mesh.position.set(0, gy + BALL_D / 2 + 0.02, SPOT_Z);
+  mesh.material = mats.white;
 
-  if (existingMesh) {
-    mesh = existingMesh;
-    mesh.position.set(0, gy + BALL_D / 2 + 0.02, SPOT_Z);
-    mesh.rotation.setAll(0);
-  } else {
-    mesh = MeshBuilder.CreateSphere("penaltyBall", { diameter: BALL_D, segments: 8 }, scene);
-    mesh.position.set(0, gy + BALL_D / 2 + 0.02, SPOT_Z);
-    mesh.material = mats.white;
-
-    // 12 black pentagons at icosahedral positions — classic Telstar football
-    PENTAGON_DIRS.forEach(([nx, ny, nz], i) => {
-      const p = MeshBuilder.CreateSphere(`pbPatch${i}`, { diameter: BALL_D * 0.36, segments: 5 }, scene);
-      const o = BALL_D * 0.455;
-      p.position.set(nx * o, ny * o, nz * o);
-      p.scaling.set(1, 0.18, 1);
-      p.material = mats.patch;
-      p.parent   = mesh;
-    });
-  }
+  // 12 black pentagons at icosahedral positions — classic Telstar football
+  PENTAGON_DIRS.forEach(([nx, ny, nz], i) => {
+    const p = MeshBuilder.CreateSphere(`pbPatch${i}`, { diameter: BALL_D * 0.36, segments: 5 }, scene);
+    const o = BALL_D * 0.455;
+    p.position.set(nx * o, ny * o, nz * o);
+    p.scaling.set(1, 0.18, 1);
+    p.material = mats.patch;
+    p.parent   = mesh;
+  });
 
   const agg = new PhysicsAggregate(mesh, PhysicsShapeType.SPHERE,
     { mass: 0.5, restitution: 0.55, friction: 0.45 }, scene);
@@ -328,12 +320,14 @@ export function startPenalty(scene: Scene, pugRoot: TransformNode): void {
   let kickCooldown = 0;
 
   function resetRound() {
+    // Fully dispose old ball so physics doesn't conflict on the recycled mesh
     ball.agg.dispose();
-    ball = spawnBall(scene, ball.mesh);
-    keeper.x       = 0;
-    keeper.state   = 'idle';
+    ball.mesh.getChildMeshes().forEach(m => m.dispose());
+    ball.mesh.dispose();
+    ball = spawnBall(scene);
+
+    // Don't snap keeper.x to 0 here — let the 'resetting' state animate it back
     keeper.targetX = 0;
-    keeper.root.position.x = 0;
     keeper.body.rotation.z = 0;
     keeper.headPivot.rotation.x = 0;
     kickCooldown = 0;

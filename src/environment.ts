@@ -309,7 +309,7 @@ function buildBushes(scene: Scene, m: Mats) {
 
   const positions: [number, number][] = [
     [-7, 7], [7, 7], [-7, -7], [7, -7],
-    [-11, 0], [11, 0], [0, 11], [0, -11],
+    [-11, 0], [11, 0], /* (0, 11) removed — in penalty corridor */ [0, -11],
     [-18, 10], [18, -10], [-14, -18], [18, 14],
     [24, 4], [-24, -4], [4, 24], [-4, -24],
     [-26, 20], [26, -18], [-8, 28], [8, -28],
@@ -359,7 +359,7 @@ function buildBenches(scene: Scene, m: Mats) {
   const configs = [
     { x: 8,   z: 0,   ry: Math.PI / 2 },
     { x: -8,  z: 0,   ry: -Math.PI / 2 },
-    { x: 0,   z: 8,   ry: 0 },
+    // (0, 8) removed — sits in the penalty corridor in front of the goal
     { x: 0,   z: -8,  ry: Math.PI },
     { x: 20,  z: -6,  ry: 0.6 },
     { x: -20, z: 6,   ry: -0.6 },

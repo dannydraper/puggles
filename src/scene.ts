@@ -15,6 +15,7 @@ import { createDayNightCycle } from "./dayNight";
 import { createClouds } from "./clouds";
 import { createBalls } from "./balls";
 import { startFetchFrenzy } from "./fetchFrenzy";
+import { startPenalty } from "./penalty";
 
 export function createScene(engine: Engine, havokInstance: unknown): Scene {
   const scene = new Scene(engine);
@@ -41,6 +42,7 @@ export function createScene(engine: Engine, havokInstance: unknown): Scene {
   const dogRoots = createAllDogs(scene);
   createBalls(scene, pugParts.root, dogRoots);
   startFetchFrenzy(scene, pugParts.root);
+  startPenalty(scene, pugParts.root);
 
   const { getTimeOfDay } = createDayNightCycle(scene);
   createClouds(scene, getTimeOfDay);
